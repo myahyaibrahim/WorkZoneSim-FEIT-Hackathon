@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WorkZoneSim · Work Zone Impact Simulator</title>
+  <meta name="description" content="Future Cities digital tool: simulate the knock-on effects of a planned road closure or work zone on traffic, pedestrians and public transport before deployment.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="css/app.css">
+  <link rel="icon" type="image/png" href="assets/logo-mark.png">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-chip"><img src="assets/logo.png" height="22" alt="WorkZoneSim"></span>
+      <span class="brand-sub">Work zone impact simulator · Greater Melbourne</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel">
+      <nav class="tabs stepper s3" role="tablist" aria-label="Workflow">
+        <button class="tab active" data-tab="input" role="tab"><span class="st-ic"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></span><span class="st-l">Input</span></button>
+        <button class="tab" data-tab="reco" role="tab"><span class="st-ic"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18"/><path d="M6 20v-7M11 20V6M16 20v-10M21 20v-4"/></svg></span><span class="st-l">Recommendation</span></button>
+        <button class="tab" data-tab="proc" role="tab"><span class="st-ic"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6h15l-1.5 9h-12z"/><path d="M6 6L5 3H2"/><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/></svg></span><span class="st-l">Procurement</span></button>
+      </nav>
+
+      <div class="panes">
+        <!-- STAGE 1: INPUT -->
+        <section class="pane active" data-pane="input" data-stage="input">
+          <div class="site-intro">
+            <div class="si-t">Where and when are the works?</div>
+            <div class="si-s">Mark the work site on the map and set the schedule. The platform builds and compares the execution options for you.</div>
+          </div>
+          <div class="search">
+            <svg class="search-ic" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <input id="search" type="search" placeholder="Search a street or suburb" autocomplete="off">
+            <div id="searchResults" class="search-results"></div>
+          </div>
+
+          <div class="blk">
+            <div class="blk-t"><span class="blk-n">1</span>Work site</div>
+            <div class="geo-seg" role="radiogroup" aria-label="Work site shape">
+              <button type="button" data-geo="point"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8" opacity=".35"/></svg>Pinpoint</button>
+              <button type="button" data-geo="segment"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="17" r="2"/><circle cx="19" cy="7" r="2"/><path d="M6.7 15.8L17.3 8.2"/></svg>Road segment</button>
+            </div>
+            <div id="pickHint" class="hint hidden"></div>
+            <div id="geoSummary"></div>
+          </div>
+
+          <div class="blk">
+            <div class="blk-t"><span class="blk-n">2</span>Schedule</div>
+            <div class="grid2">
+              <label>Start date<input id="appStart" type="date"></label>
+              <label>Working days<input id="days" type="number" min="1" max="120" value="2"></label>
+            </div>
+            <div class="win-seg" role="radiogroup" aria-label="Daily working window">
+              <button type="button" data-win="day">Day<small>09:30–15:30</small></button>
+              <button type="button" data-win="night">Night<small>20:00–05:00</small></button>
+              <button type="button" data-win="247">24/7<small>continuous</small></button>
+              <button type="button" data-win="custom">Custom<small>set hours</small></button>
+            </div>
+            <div class="grid2 win-custom">
+              <label>From<input id="winFrom" type="time" value="09:30" step="900"></label>
+              <label>To<input id="winTo" type="time" value="15:30" step="900"></label>
+            </div>
+            <label>Works noise
+              <select id="noisy"><option value="no">Quiet works</option><option value="yes">Noisy works (saw cutting, jackhammer, compaction)</option></select>
+            </label>
+            <div id="schedSummary" class="muted small"></div>
+          </div>
+
+          <div class="blk">
+            <div class="blk-t"><span class="blk-n">3</span>Priorities<span class="blk-sub">for the AI recommendation</span></div>
+            <div class="prio">
+              <label class="chk" title="Lowest equipment and fees"><input type="checkbox" data-prio="cost" checked>Lowest cost</label>
+              <label class="chk" title="Keep trams and buses running"><input type="checkbox" data-prio="pt">Keep PT running</label>
+              <label class="chk" title="Avoid night works"><input type="checkbox" data-prio="nonight">No night works</label>
+              <label class="chk" title="Finish in the fewest days"><input type="checkbox" data-prio="fast">Fewest days</label>
+              <label class="chk" title="Keep business and resident access"><input type="checkbox" data-prio="access">Keep access</label>
+            </div>
+            <label class="field-row">Budget limit<span class="money-in"><span>$</span><input id="budget" type="number" min="0" step="100" placeholder="No limit"></span></label>
+            <label class="field-col">Anything else the plan should respect<textarea id="prioNotes" rows="2" placeholder="e.g. school zone 8–9am; market deliveries before 7am"></textarea></label>
+          </div>
+
+          <button id="genBtn" class="btn primary wide" disabled>Generate scenarios</button>
+
+          <div class="ex-head" style="margin-top:16px"><span>Or start from an example</span><span class="muted">6</span></div>
+          <div id="presets" class="presets"></div>
+          <div id="netStats" class="card hidden"></div>
+          <select id="radius" hidden><option value="1200" selected>1.2 km</option></select>
+        </section>
+
+        <!-- STAGE 2: RECOMMENDATION -->
+        <section class="pane" data-pane="reco" data-stage="reco">
+          <div id="recoBody"><p class="empty">Set the work site and schedule, then press <b>Generate scenarios</b>.</p></div>
+          <details class="fold adv" id="advanced">
+            <summary>Advanced: edit the treatment</summary>
+            <p class="muted small">For traffic engineers. Change the selected scenario's treatment, then press Re-run.</p>
+            <button id="addZone" class="btn wide">+ Add another work zone</button>
+            <div id="closureList"></div>
+            <h3>Analysis</h3>
+            <div class="grid2">
+              <label class="wide-col">Analysis hour<select id="period"></select></label>
+              <label>Duration (h)<input id="duration" type="number" min="1" max="2000" value="8"></label>
+              <label>Demand<select id="level"><option value="0.9">-10% (sensitivity)</option><option value="1" selected>Calibrated</option><option value="1.1">+10% (sensitivity)</option></select></label>
+            </div>
+            <label class="check"><input id="prenotify" type="checkbox" checked> Closure published in advance</label>
+            <details class="fold">
+              <summary>Site data without a published standard</summary>
+              <p class="muted small">Optional. Blank fields are left out of the results.</p>
+              <div class="grid2">
+                <label class="wide-col">Pedestrians (people/h)<input id="pedCount" type="number" min="0" placeholder="sensor if available"></label>
+                <label>Skip a shop visit (%)<input id="deter" type="number" min="0" max="100" step="0.5" placeholder="not valued"></label>
+                <label>Spend per visit ($)<input id="spend" type="number" min="0" step="0.5" placeholder="not valued"></label>
+              </div>
+            </details>
+            <details class="fold">
+              <summary>All treatment × time options</summary>
+              <button id="exploreBtn" class="btn wide">Explore all options</button>
+              <div id="exploreBody"></div>
+              <h3>Saved runs</h3>
+              <div id="compareBody"></div>
+            </details>
+          </details>
+        </section>
+
+        <!-- STAGE 3: PROCUREMENT -->
+        <section class="pane" data-pane="proc" data-stage="proc">
+          <div id="procBody"><p class="empty">Select a scenario in <b>Recommendation</b> first.</p></div>
+          <details class="fold">
+            <summary>Application details for the TMP</summary>
+            <div class="grid2">
+              <label>Applicant<input id="appApplicant" type="text"></label>
+              <label>Contact<input id="appContact" type="text" placeholder="name, phone, email"></label>
+              <label class="wide-col">Nature of works<input id="appWorks" type="text" placeholder="e.g. tram track renewal"></label>
+              <label>Working hours<input id="appHours" type="text" placeholder="e.g. 7pm to 5am"></label>
+              <label>Prepared by<input id="appPreparer" type="text" placeholder="name, qualification"></label>
+              <label>Version<input id="appVersion" type="text" placeholder="v1.0"></label>
+              <label class="wide-col">TMP / TGS no.<input id="appTmpNo" type="text" placeholder="TMP-001"></label>
+            </div>
+          </details>
+          <details class="fold">
+            <summary>Layout settings and depot stock</summary>
+            <div class="grid2">
+              <label>Max VMS <input id="maxVms" type="number" min="0" max="10" value="4"></label>
+              <label>VMS message <input id="vmsMsg" type="text" value="" placeholder="auto"></label>
+            </div>
+            <table class="inv" id="inventory"></table>
+            <button id="planBtn" class="btn wide">Update equipment plan</button>
+            <div id="planNotes"></div>
+            <div id="deployList"></div>
+          </details>
+        </section>
+      </div>
+
+      <div class="runbar">
+        <button id="runBtn" class="btn run" disabled>▶ Generate</button>
+        <div id="runStatus" class="run-status">Mark the work site on the map to begin.</div>
+      </div>
+    </aside>
+
+    <section class="mapwrap">
+      <div id="map"></div>
+      <aside class="rpanel closed" id="rpanel" aria-label="Scenario results">
+        <div class="rp-head"><div style="flex:1;min-width:0"><div class="rp-k">Results</div><b id="rpTitle">Selected scenario</b></div><button id="rpClose" title="Hide results">Hide ›</button></div>
+        <div class="rp-body"><div id="resultsBody"></div></div>
+      </aside>
+      <button class="rp-tab hidden" id="rpOpen" title="Show results"><i></i>Results</button>
+      <div class="mapbar" id="layerbar">
+        <select id="netMode" title="Network colouring">
+          <option value="class">Road hierarchy</option>
+          <option value="vc">Congestion (V/C)</option>
+          <option value="delta">Traffic change</option>
+          <option value="co2">CO₂ change</option>
+        </select>
+        <details class="layers">
+          <summary>Layers</summary>
+          <div class="layer-list">
+            <label><input type="checkbox" data-layer="network" checked> Traffic</label>
+            <label><input type="checkbox" data-layer="equipment" checked> Equipment</label>
+            <label><input type="checkbox" data-layer="pt" checked> Trams and buses</label>
+            <label><input type="checkbox" data-layer="ped" checked> Pedestrians</label>
+            <label><input type="checkbox" data-layer="counts"> Count sites</label>
+            <label><input type="checkbox" data-layer="signals"> Traffic signals (DTP)</label>
+            <label><input type="checkbox" data-layer="crashes"> Crashes (DTP)</label>
+            <label><input type="checkbox" data-layer="zones"> Zones</label>
+          </div>
+        </details>
+      </div>
+      <div class="legend" id="legend"></div>
+      <div class="simbar hidden" id="simbar">
+        <button id="play" class="icon-btn" title="Play / pause">▶</button>
+        <div class="seg" id="view">
+          <button data-v="base">Baseline</button><button data-v="scen" class="on">Work zone</button>
+        </div>
+        <select id="simSpeed" title="Simulation speed"><option value="1">1×</option><option value="5" selected>5×</option><option value="20">20×</option><option value="60">60×</option></select>
+        <select id="colorBy" title="Colour vehicles by"><option value="speed">By speed</option><option value="route">By driver type</option></select>
+        <span class="clock" id="clock">08:00:00</span>
+        <span class="dotscale" id="dotScale"></span>
+      </div>
+      <div class="overlay hidden" id="overlay">
+        <div class="overlay-card">
+          <div class="spinner"></div>
+          <div id="ovTitle">Working…</div>
+          <div class="bar"><div id="ovBar"></div></div>
+          <div id="ovSub" class="muted small"></div>
+        </div>
+      </div>
+      <div class="toast hidden" id="toast"></div>
+    </section>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+  <div class="modal hidden" id="cmpModal" role="dialog" aria-modal="true" aria-labelledby="cmpTitle">
+    <div class="modal-card">
+      <header class="modal-head"><h2 id="cmpTitle">Compare options</h2><div class="modal-acts"><button class="btn sm" id="cmpCsv2">Download CSV</button><button class="btn sm" id="cmpClose" aria-label="Close">✕</button></div></header>
+      <div class="modal-body" id="cmpBody"></div>
+    </div>
+  </div>
+</body>
+</html>
