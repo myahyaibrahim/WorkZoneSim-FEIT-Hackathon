@@ -51,7 +51,7 @@
           </div>
 
           <div class="blk">
-            <div class="blk-t"><span class="blk-n">2</span>Schedule</div>
+            <div class="blk-t"><span class="blk-n">2</span>Preferred schedule<span class="blk-sub">in AEST timezone</span></div>
             <div class="grid2">
               <label>Start date<input id="appStart" type="date"></label>
               <label>Working days<input id="days" type="number" min="1" max="120" value="2"></label>
@@ -66,14 +66,14 @@
               <label>From<input id="winFrom" type="time" value="09:30" step="900"></label>
               <label>To<input id="winTo" type="time" value="15:30" step="900"></label>
             </div>
-            <label>Works noise
+            <label class="noise-f">Works noise
               <select id="noisy"><option value="no">Quiet works</option><option value="yes">Noisy works (saw cutting, jackhammer, compaction)</option></select>
             </label>
             <div id="schedSummary" class="muted small"></div>
           </div>
 
           <div class="blk">
-            <div class="blk-t"><span class="blk-n">3</span>Priorities<span class="blk-sub">for the AI recommendation</span></div>
+            <div class="blk-t"><span class="blk-n">3</span>Priorities<span class="blk-sub">tap in order of importance</span></div>
             <div class="prio">
               <label class="chk" title="Lowest equipment and fees"><input type="checkbox" data-prio="cost" checked>Lowest cost</label>
               <label class="chk" title="Keep trams and buses running"><input type="checkbox" data-prio="pt">Keep PT running</label>
@@ -82,7 +82,7 @@
               <label class="chk" title="Keep business and resident access"><input type="checkbox" data-prio="access">Keep access</label>
             </div>
             <label class="field-row">Budget limit<span class="money-in"><span>$</span><input id="budget" type="number" min="0" step="100" placeholder="No limit"></span></label>
-            <label class="field-col">Anything else the plan should respect<textarea id="prioNotes" rows="2" placeholder="e.g. school zone 8–9am; market deliveries before 7am"></textarea></label>
+            <label class="field-col">Anything else the plan should consider<textarea id="prioNotes" rows="2" placeholder="e.g. school zone 8–9am; market deliveries before 7am"></textarea></label>
           </div>
 
           <button id="genBtn" class="btn primary wide" disabled>Generate scenarios</button>
@@ -130,8 +130,8 @@
         <!-- STAGE 3: PROCUREMENT -->
         <section class="pane" data-pane="proc" data-stage="proc">
           <div id="procBody"><p class="empty">Select a scenario in <b>Recommendation</b> first.</p></div>
-          <details class="fold">
-            <summary>Application details for the TMP</summary>
+          <details class="fold hl" open>
+            <summary>Application details</summary>
             <div class="grid2">
               <label>Applicant<input id="appApplicant" type="text"></label>
               <label>Contact<input id="appContact" type="text" placeholder="name, phone, email"></label>
@@ -142,8 +142,10 @@
               <label class="wide-col">TMP / TGS no.<input id="appTmpNo" type="text" placeholder="TMP-001"></label>
             </div>
           </details>
-          <details class="fold">
-            <summary>Layout settings and depot stock</summary>
+          <div class="hl-box" id="deployWrap"><div id="deployList"></div></div>
+          <div id="procDocs"></div>
+          <details class="fold rpm-only">
+            <summary>RPM Hire: layout settings and depot stock</summary>
             <div class="grid2">
               <label>Max VMS <input id="maxVms" type="number" min="0" max="10" value="4"></label>
               <label>VMS message <input id="vmsMsg" type="text" value="" placeholder="auto"></label>
@@ -151,7 +153,6 @@
             <table class="inv" id="inventory"></table>
             <button id="planBtn" class="btn wide">Update equipment plan</button>
             <div id="planNotes"></div>
-            <div id="deployList"></div>
           </details>
         </section>
       </div>

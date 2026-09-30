@@ -14,14 +14,14 @@ import { MicroSim } from './micro.js';
 import { matchCrashes, yearsLabel } from './safety.js';
 import { impactRating, BIZ_GROUP } from './council.js';
 import { generateScenarios, assessPillars, PILLARS, scheduleHours, scheduleLabel, WINDOWS } from './scenarios.js';
-import { loadRates, saveRates, resetRates, buildBOM, RATE_NOTE } from './rates.js';
+import { loadRates, saveRates, resetRates, buildBOM, RATE_NOTE, RPM_LINKS } from './rates.js';
 import { geh } from './demand.js';
 import { PARAMETERS, SOURCES, VTT, INFO, levelOfService, WALK_SPEED } from './standards.js';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const fmt = (v, d = 0) => v == null || !isFinite(v) ? '–' : v.toLocaleString('en-AU', { minimumFractionDigits: d, maximumFractionDigits: d });
-const money = v => { if (v == null || !isFinite(v)) return '–'; const a = Math.abs(v); return (v < -0.5 ? '−$' : '$') + (a >= 1e6 ? (a / 1e6).toFixed(2) + 'M' : a >= 1e3 ? (a / 1e3).toFixed(1) + 'k' : a.toFixed(0)); };
+const money = v => { if (v == null || !isFinite(v)) return '–'; return (v < -0.5 ? '−A$' : 'A$') + Math.round(Math.abs(v)).toLocaleString('en-AU'); };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // ---------------------------------------------------------------- presets (Greater Melbourne)
@@ -260,9 +260,21 @@ function setWindow(kind) {
   schedChanged();
 }
 const PRIO_LABEL = { cost: 'Lowest cost', pt: 'Keep trams and buses running', nonight: 'Avoid night works', fast: 'Finish in the fewest days', access: 'Keep business and resident access' };
+S.prioOrder = ['cost'];
+function renderPrioRanks() {
+  $$('[data-prio]').forEach(c => { c.checked = S.prioOrder.includes(c.dataset.prio);
+    let b = c.parentElement.querySelector('.rk'); if (!b) { b = document.createElement('span'); b.className = 'rk'; c.after(b); }
+    b.textContent = c.checked ? S.prioOrder.indexOf(c.dataset.prio) + 1 : '+'; });
+}
+$$('[data-prio]').forEach(c => c.addEventListener('change', () => {
+  const k = c.dataset.prio;
+  S.prioOrder = c.checked ? [...S.prioOrder.filter(x => x !== k), k] : S.prioOrder.filter(x => x !== k);
+  renderPrioRanks();
+}));
+renderPrioRanks();
 function readPriorities() {
-  const pri = $$('[data-prio]').filter(c => c.checked).map(c => c.dataset.prio);
-  return { keys: pri, priorities: pri.map(k => PRIO_LABEL[k]), budget_aud: +$('#budget').value || null, notes: $('#prioNotes').value.trim() || null };
+  const pri = S.prioOrder.slice();
+  return { keys: pri, priorities_in_order: pri.map((k, i) => `${i + 1}. ${PRIO_LABEL[k]}`), budget_aud: +$('#budget').value || null, notes: $('#prioNotes').value.trim() || null };
 }
 function readSchedule() {
   const [from, to] = S.win === '247' ? ['00:00', '24:00'] : [$('#winFrom').value || '09:30', $('#winTo').value || '15:30'];
@@ -318,6 +330,7 @@ async function genScenarios() {
   finally { hideOverlay(); S.busy = false; updateRunbar(); updateSteps(); }
 }
 const LV_CLASS = { High: 'bad', Medium: 'warn', Low: 'ok' };
+const COMMUNITY_NOTE = 'Cost the closure puts on road users and the community over your working hours, not paid by the contractor: extra travel time for cars, vans and trucks, vehicle running costs, public transport and pedestrian delay, emissions, noise, air pollution and crash risk. Each working hour is modelled in its own traffic period and valued with TfNSW / ATAP parameter values (June 2024 AUD).';
 const dayLabel = sc => `${sc.days} ${sc.weekend ? 'weekend ' : ''}day${sc.days > 1 ? 's' : ''}`;
 const winLabel = sc => sc.from === '00:00' && sc.to === '24:00' ? '24/7' : `${sc.from}–${sc.to}`;
 function renderReco() {
@@ -333,14 +346,14 @@ function renderReco() {
       return `<div class="scn${S.sel === i ? ' on' : ''}${aiPick || (!S.scenAdvice && row.recommended) ? ' best' : ''}">
       <div class="scn-h"><span class="oc-letter">${String.fromCharCode(65 + i)}</span>
         <div class="scn-hm"><div class="scn-t">${esc(row.name)}</div><div class="scn-s">${esc(dayLabel(row.sched))} · ${esc(winLabel(row.sched))} · ${fmt(row.hours.total)} h</div></div>
-        <span class="scn-chips">${aiPick ? '<span class="chip ai">AI recommendation</span>' : ''}${row.recommended ? `<span class="chip ok">${S.scenAdvice ? 'Model pick' : 'Recommended'}</span>` : ''}</span></div>
+        <span class="scn-chips">${aiPick ? '<span class="chip ai">AI recommendation</span>' : !S.scenAdvice && row.recommended ? '<span class="chip ok">Recommended</span>' : ''}</span></div>
       <div class="scn-p">${PILLARS.map(([k, lab]) => `<span class="pl ${LV_CLASS[row.pillars[k].level]}" title="${esc(lab)}: ${row.pillars[k].level}. ${esc(row.pillars[k].text)}"><i></i>${esc(lab.split(' ')[0])}</span>`).join('')}</div>
-      <div class="scn-f"><div class="scn-m"><span>Equipment & fees</span><b>${money(row.contractor)}</b></div><div class="scn-m"><span>Community cost</span><b>${money(row.community)}</b></div>
-        ${row.fails ? `<span class="chip bad" title="${esc(row.failText)}">Fails ${row.fails}</span>` : ''}
+      <div class="scn-f"><div class="scn-m"><span>Equipment & fees</span><b>${money(row.contractor)}</b></div><div class="scn-m"><span>Community cost <i class="info" title="${esc(COMMUNITY_NOTE)}">i</i></span><b>${money(row.community)}</b></div>
+        ${row.fails ? `<span class="chip bad" title="${esc(row.failText)}">${row.fails} need${row.fails > 1 ? '' : 's'} action</span>` : ''}
         <button class="btn sm ${S.sel === i ? 'ghost' : 'primary'}" data-sel="${i}">${S.sel === i ? 'Selected' : 'Select'}</button></div>
     </div>`; }).join('')}</div>
     ${S.sel != null && S.result ? `<button class="btn primary wide" id="toProc">Continue to procurement →</button>` : ''}
-    <p class="muted small">Each scenario does the same total working hours. Community cost: travel time, vehicle running, public transport, emissions and crash risk for the hours the road is occupied. Knock-on ratings: ${PILLARS.map(([, l]) => l.toLowerCase()).join(', ')}.</p>`;
+    <p class="muted small">Each scenario does the same total working hours. Equipment & fees: the hire cost of the equipment each layout needs, plus fixed fees. Community cost: the cost the closure puts on road users and the community (travel time, vehicle running, public transport, emissions, crash risk) over your working hours. Knock-on ratings: ${PILLARS.map(([, l]) => l.toLowerCase()).join(', ')}.</p>`;
   el.querySelectorAll('[data-sel]').forEach(b => b.onclick = () => selectScenario(+b.dataset.sel));
   $('#cmpScen').onclick = () => openCompare(scenCompareItems());
   const card = $('#aiCardScen');
@@ -374,14 +387,14 @@ function aiScenX() {
 }
 
 // ---------------------------------------------------------------- procurement
-const aud = v => (v < 0 ? '−$' : '$') + Math.abs(v).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const aud = v => (v < 0 ? '−A$' : 'A$') + Math.abs(v).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 function currentBOM() {
   const row = S.scen?.rows[S.sel];
   return row && S.result ? buildBOM(S.result.plan, S.inventory, row.sched, row.hours, S.rates, S.bomQty) : null;
 }
 function renderProc(before) {
   const el = $('#procBody'), row = S.scen?.rows[S.sel], r = S.result;
-  if (!row || !r) { el.innerHTML = '<p class="empty">Select a scenario in <b>Recommendation</b> first.</p>'; return; }
+  if (!row || !r) { el.innerHTML = '<p class="empty">Select a scenario in <b>Recommendation</b> first.</p>'; $('#procDocs').innerHTML = ''; return; }
   const bom = currentBOM(), pil = assessPillars(S.net, r, r.base, S.closures, S.emergency, S.zones);
   const unitH = bom.lines.some(l => l.unit === 'hour');
   el.innerHTML = `<div class="proc-head"><span class="oc-letter">${String.fromCharCode(65 + S.sel)}</span><div><div class="si-t">${esc(row.name)}</div>
@@ -401,11 +414,14 @@ function renderProc(before) {
     <div class="proc-acts"><button class="btn" id="recalBtn">Recalibrate simulation</button><a href="#" id="rateReset" class="small">Reset rates</a></div>
     <h3>Knock-on effects${before ? ' after recalibration' : ''}</h3>
     <div class="pil-list">${PILLARS.map(([k, lab]) => `<div class="pil"><span class="risk ${LV_CLASS[pil[k].level]}"><i></i>${pil[k].level}</span><div><b>${esc(lab)}</b><div class="muted small">${esc(pil[k].text)}${before && before[k].level !== pil[k].level ? ` (was ${before[k].level})` : ''}</div></div></div>`).join('')}</div>
+    <!--DOCS-->
     <h3>Documents</h3>
     <div class="doc-row"><button class="btn" id="quoteBtn">Quote (PDF)</button><button class="btn" id="tmpBtn2">TMP report</button><button class="btn" id="tiaBtn2">TIA report</button></div>
     ${S.submitted ? `<div class="confirm"><div class="confirm-t">Quote request prepared</div><div>Reference <b>${esc(S.submitted.ref)}</b> · ${S.submitted.at.toLocaleString('en-AU')}</div>
       <div class="muted small">Demo: this request was not sent to RPM Hire. In production it would send the equipment list, schedule and delivery details to RPM Hire's quoting system and return their confirmation.</div></div>`
       : '<button class="btn primary wide big" id="submitBtn">Submit to RPM Hire for quote</button><p class="muted small center">Demo: prepares the request, nothing is sent.</p>'}`;
+  const html = el.innerHTML, cut = html.indexOf('<!--DOCS-->');
+  el.innerHTML = html.slice(0, cut); $('#procDocs').innerHTML = html.slice(cut);
   const refresh = () => {
     const b = currentBOM();
     for (const l of b.lines) { const c = el.querySelector(`[data-sub="${l.key}"]`); if (c) c.textContent = aud(l.subtotal); }
@@ -999,12 +1015,12 @@ function renderInventory() {
     const label = k => S.inventory.find(i => i.key === k)?.label || k;
     // one row per device type: name, quantity, numbered location buttons that zoom the map (red = no stock)
     const miss = plan.markers.filter(m => m.missing).length;
-    $('#deployList').innerHTML = `<details class="fold dep"><summary>Deployment list<span class="dep-n">${plan.markers.length} items${miss ? ` · <b>${miss} no stock</b>` : ''}</span></summary>
+    $('#deployList').innerHTML = `<details class="fold dep" open><summary>Deployment list<span class="dep-n">${plan.markers.length} items${miss ? ` · <b>${miss} no stock</b>` : ''}</span></summary>
       <div class="dep-list">${Object.entries(groups).map(([k, arr]) => `<div class="dep-row">
         <div class="dep-h"><span class="dep-t">${esc(label(k).replace(/[“”"]/g, ''))}</span><span class="dep-q">×${arr.length}</span></div>
         <div class="dep-pins">${arr.map((mk, i) => `<button class="dep-pin${mk.missing ? ' miss' : ''}" data-ll="${mk.ll.join(',')}" title="${mk.ll[0].toFixed(5)}, ${mk.ll[1].toFixed(5)}${mk.sub ? ` · ${esc(mk.sub)}` : ''}${mk.missing ? ' · not in stock' : ''}">${i + 1}</button>`).join('')}</div>
       </div>`).join('')}</div>
-      <p class="muted small" style="margin:6px 0 0">Click a number to zoom to that device. Coordinates are in the TMP device schedule and the GeoJSON export.</p></details>`;
+      <p class="muted small" style="margin:6px 0 0">Click a number to zoom to that device. ${RPM_LINKS.catalogue ? `<a href="${esc(RPM_LINKS.catalogue)}" target="_blank" rel="noopener">See equipment photos</a>` : '<span class="ph-link">See equipment photos [link]</span>'}.</p></details>`;
     $$('#deployList .dep-pin').forEach(b => b.onclick = () => map.setView(b.dataset.ll.split(',').map(Number), 19));
   } else $('#deployList').innerHTML = '';
 }
@@ -1135,7 +1151,7 @@ function aiAdviceHtml(res, x) {
     ${a.actions?.length ? `<div class="ai-sec">What to do before lodging</div>${list(a.actions)}` : ''}
     ${a.trade_offs?.length ? `<div class="ai-sec">Trade-offs</div>${list(a.trade_offs)}` : ''}
     </details>
-    ${o && o.checks.some(c => c.status === 'fail') ? `<div class="note">This option fails ${o.checks.filter(c => c.status === 'fail').map(c => esc(c.topic)).join(', ')}; fix that before lodging.</div>` : ''}
+    ${o && o.checks.some(c => c.status === 'fail') ? `<div class="note">Needs action before lodging: ${o.checks.filter(c => c.status === 'fail').map(c => esc(c.topic)).join(', ')}.</div>` : ''}
     ${o && a.equipment_changes?.length ? `<div class="ai-sec">Suggested equipment changes</div><ul>${a.equipment_changes.filter(c => o.equipment?.some(e => e.item_key === c.item_key) || S.inventory.some(i => i.key === c.item_key)).map(c => `<li><b>${esc((S.inventory.find(i => i.key === c.item_key)?.label || c.item_key).replace(/[“”"]/g, ''))}: ${c.quantity}</b> · ${esc(c.reason)}</li>`).join('')}</ul>
       ${o.scenIndex != null ? `<button class="btn sm" data-ai-eq="${a.recommended_option}">Use these quantities in procurement</button>` : ''}` : ''}
     ${ru ? `<p class="muted small">Runner-up: ${esc(ru.treatment.label)}${ru.schedule ? '' : `, ${esc(PERIODS[ru.period].label)}`}.</p>` : ''}
@@ -1302,16 +1318,18 @@ const ECON_LINES = [
 ];
 const signed = (v, d = 0) => (v >= 0 ? '+' : '−') + fmt(Math.abs(v), d);
 
-const CHECK_TAG = { fail: ['Fail', 'status-short'], warn: ['Check', 'st-warn'], action: ['Action', 'st-act'], info: ['Note', 'muted'], pass: ['Pass', 'status-ok'] };
+const CHECK_TAG = { fail: ['Action needed', 'status-short'], stock: ['Hire', 'st-warn'], warn: ['Validate', 'st-warn'], action: ['Recommendation', 'st-act'], info: ['Note', 'muted'], pass: ['Ready', 'status-ok'] };
 function complianceHtml(ch) {
-  const order = ['fail', 'warn', 'action', 'info'], n = k => ch.filter(x => x.status === k).length;
-  const row = x => `<tr><td style="white-space:nowrap"><span class="${CHECK_TAG[x.status][1]}">${CHECK_TAG[x.status][0]}</span></td><td><b>${esc(x.topic)}</b><br>${esc(x.finding)}${x.status !== 'pass' && x.rec ? `<div class="rec"><b>Recommendation:</b> ${esc(x.rec)}</div>` : ''}<div class="basis">${esc(x.basis)}</div></td></tr>`;
-  const open = order.flatMap(k => ch.filter(x => x.status === k));
-  const passed = ch.filter(x => x.status === 'pass');
-  return `<div class="chk-sum">${[['fail', 'not met'], ['warn', 'to check'], ['action', 'actions'], ['pass', 'passed']].filter(([k]) => n(k)).map(([k, t]) => `<span class="${CHECK_TAG[k][1]}">${n(k)} ${t}</span>`).join(' · ')}</div>
+  const order = ['fail', 'stock', 'warn', 'action', 'info'], n = (...k) => ch.filter(x => k.includes(x.status)).length;
+  const row = x => `<tr><td style="white-space:nowrap"><span class="${CHECK_TAG[x.status][1]}">${CHECK_TAG[x.status][0]}</span></td><td><b>${esc(x.topic)}</b><br>${esc(x.finding)}${x.status !== 'pass' && x.rec ? `<div class="rec"><b>${x.status === 'warn' ? 'Validate' : 'Action'}:</b> ${esc(x.rec)}${x.status === 'stock' ? ` ${salesLink()}` : ''}</div>` : ''}<div class="basis">${esc(x.basis)}</div></td></tr>`;
+  const open = order.flatMap(k => ch.filter(x => x.status === k)), passed = ch.filter(x => x.status === 'pass');
+  const sum = [[n('fail', 'stock'), 'need action', 'status-short'], [n('warn'), 'need field validation', 'st-warn'], [n('action'), 'recommendation', 'st-act'], [n('pass'), 'ready to deploy', 'status-ok']]
+    .filter(([v]) => v).map(([v, t, c]) => `<span class="${c}">${v} ${t}${v > 1 && t === 'recommendation' ? 's' : ''}</span>`).join(' · ');
+  return `<div class="chk-sum">${sum}</div>
     <table class="t">${open.map(row).join('')}</table>
-    ${passed.length ? `<details class="fold"><summary>${passed.length} check${passed.length > 1 ? 's' : ''} passed</summary><table class="t">${passed.map(row).join('')}</table></details>` : ''}`;
+    ${passed.length ? `<details class="fold"><summary>${passed.length} ready to deploy</summary><table class="t">${passed.map(row).join('')}</table></details>` : ''}`;
 }
+const salesLink = () => RPM_LINKS.sales ? `<a href="${esc(RPM_LINKS.sales)}" target="_blank" rel="noopener">Consult our Sales Team</a>` : '<span class="ph-link">Consult our Sales Team [link]</span>';
 
 function safetySection(r) {
   const s = r.safety;
@@ -1351,7 +1369,7 @@ function renderResults() {
   const calib = base.calib;
   const ch = complianceChecks(S.net, S.closures, r, base);
   const nF = ch.filter(x => x.status === 'fail').length, nW = ch.filter(x => x.status === 'warn').length, nA = ch.filter(x => x.status === 'action').length;
-  const verdict = nF ? ['bad', 'Needs changes', `${nF} check${nF > 1 ? 's' : ''} not met`] : nW ? ['warn', 'Feasible with conditions', `${nW} item${nW > 1 ? 's' : ''} to confirm`] : ['ok', 'Ready to lodge', 'All checks met'];
+  const verdict = nF ? ['bad', 'Needs changes', `${nF} need${nF > 1 ? '' : 's'} action`] : nW ? ['warn', 'Feasible with conditions', `${nW} to validate on site`] : ['ok', 'Ready to lodge', 'All checks met'];
   // the three largest impacts, most serious first
   const top = [
     blockedTrams.length && [3, `${blockedTrams.length} tram route${blockedTrams.length > 1 ? 's' : ''} cut (${blockedTrams.map(t => esc(t.ref)).join(', ')})`],
@@ -1362,7 +1380,7 @@ function renderResults() {
     r.amenity.hotspots && [1, `${r.amenity.hotspots} local street${r.amenity.hotspots > 1 ? 's' : ''} with over double traffic`],
     buses.length && [1, `${buses.length} bus route${buses.length > 1 ? 's' : ''} diverted or delayed`],
   ].filter(Boolean).sort((a, b) => b[0] - a[0]).slice(0, 3);
-  const RT = [['overview', 'Overview'], ['traffic', 'Traffic'], ['transit', 'Transit'], ['cost', 'Cost'], ['safety', 'Safety'], ['checks', `Checks${nF + nW ? ` <span class="tab-n ${nF ? 'bad' : 'warn'}">${nF + nW}</span>` : ''}`]];
+  const RT = [['overview', 'Overview'], ['traffic', 'Traffic'], ['transit', 'Transit'], ['cost', 'Cost'], ['safety', 'Safety'], ['checks', `Evaluation${nF + nW ? ` <span class="tab-n ${nF ? 'bad' : 'warn'}">${nF + nW}</span>` : ''}`]];
   S.rtab ??= 'overview';
   el.innerHTML = `
     <div class="resbar"><div class="res-title">${esc(r.meta.site)}<span>${S.scen?.rows?.[S.sel] ? `${esc(scheduleLabel(S.scen.rows[S.sel].sched))} · busiest hour: ${esc(PERIODS[r.period].label.replace(/ \(.*\)$/, '').toLowerCase())}` : `${esc(PERIODS[r.period].label)} · ${fmt(c.dur)} h`}</span></div>
@@ -1587,8 +1605,9 @@ function snapshot(r, c, checks, extra = {}) {
     shortfalls: r.plan.items.filter(i => i.shortfall).map(i => `${i.label} −${i.shortfall}`), informed: r.informed, vms: `${r.plan.vmsPlaced}/${r.plan.vmsRequired}`,
     fails: checks.filter(x => x.status === 'fail').length, warns: checks.filter(x => x.status === 'warn').length,
     failText: checks.filter(x => x.status === 'fail').map(x => x.topic).join(', '),
-    failList: checks.filter(x => x.status === 'fail').map(x => ({ topic: x.topic, finding: x.finding, rec: x.rec })),
-    warnList: checks.filter(x => x.status === 'warn').map(x => ({ topic: x.topic, rec: x.rec })),
+    failList: checks.filter(x => x.status === 'fail' || x.status === 'stock').map(x => ({ topic: x.topic, finding: x.finding, rec: x.rec, stock: x.status === 'stock' })),
+    warnList: [...new Map(checks.filter(x => x.status === 'warn').map(x => [x.topic, { topic: x.topic, rec: x.rec }])).values()],
+    stockShort: checks.some(x => x.status === 'stock'),
     groups: Object.fromEntries(COST_GROUPS.map(([k, , keys]) => [k, keys.reduce((a, key) => a + (c.lineTotals[key] || 0), 0)])),
     ...cardFields(r, c, extra.closures),
     ...extra,
@@ -1687,8 +1706,7 @@ function openCompare(items) {
       <header class="oc-h">
         <span class="oc-letter">${String.fromCharCode(65 + i)}</span>
         <div class="oc-hm"><div class="oc-name">${esc(s.name)}</div>
-          <div class="oc-pills">${s.recommended ? '<span class="chip ok">Recommended</span>' : ''}${s.fails ? `<span class="chip bad" title="${esc(s.failText)}">Fails ${s.fails}</span>` : '<span class="chip ok">Passes</span>'}${s.warns ? `<span class="chip warn">${s.warns} to check</span>` : ''}</div></div>
-        <button class="oc-exp" data-exp="${i}" aria-expanded="false">Expand</button>
+          <div class="oc-pills">${s.recommended ? '<span class="chip ok">Recommended</span>' : ''}${s.fails ? `<span class="chip bad" title="${esc(s.failText)}">${s.fails} need${s.fails > 1 ? '' : 's'} action</span>` : '<span class="chip ok">Ready</span>'}${s.stockShort ? '<span class="chip warn">Short on equipment stock · Call</span>' : ''}${s.warnList?.length ? `<span class="chip warn">${s.warnList.length} caution${s.warnList.length > 1 ? 's' : ''}</span>` : ''}</div></div>
       </header>
       <section><h5>Work zone</h5><dl class="oc-dl">
         ${row('Timing', esc(s.period.replace(/ \(.*\)$/, '')))}${row('Hours', esc((s.period.match(/\((.*)\)/) || [])[1] || '–'))}
@@ -1711,16 +1729,17 @@ function openCompare(items) {
           ${row('Trams affected', s.ptRefs?.length ? esc(s.ptRefs.join(', ')) : 'none')}${row('Bus routes', s.buses.length ? `${s.buses.length}` : 'none')}
           ${num(s, 'ptDelay', ['<span title="Weighted by passengers; a cut tram counts two transfers to the replacement bus and the wait (TfNSW EPV transfer penalty)">Passenger delay (eq.)</span>', plus(s.ptDelay, 'min', 1)])}</dl>
       </section>
-      <section class="oc-checks"><h5>Checks</h5>
-        ${s.failList?.length ? s.failList.map(f => `<div class="ck fail"><b>Fails: ${esc(f.topic)}</b><span>${esc(f.finding)}</span>${f.rec ? `<span class="ck-fix">Fix: ${esc(f.rec.split('. ')[0])}.</span>` : ''}</div>`).join('') : '<div class="ck pass"><b>No check failed</b></div>'}
-        ${s.warnList?.length ? `<div class="ck-sub">To confirm on site (${s.warnList.length})</div><div class="ck-tags">${s.warnList.map(w => `<span class="chip warn" title="${esc(w.rec || '')}">${esc(w.topic)}</span>`).join('')}</div>` : ''}
-      </section>
       <section><h5>Equipment needs</h5><dl class="oc-dl">${eqKeys.map(([k, label]) => { const e = eq.get(k);
         return row(esc(label.replace(/[“”"]/g, '').replace(/ \(.*\)$/, '')), e ? `${e.qty} × ${s.days} d${e.short ? ` <span class="short">−${e.short}</span>` : ''}` : '–'); }).join('')}</dl></section>
-      <div class="oc-more" hidden><section><h5>More detail</h5><dl class="oc-dl">
+      <div class="oc-more"><section><h5>More detail</h5><dl class="oc-dl">
         ${num(s, 'perHour', ['Cost per hour', money(s.perHour)])}${num(s, 'co2t', ['CO₂e over the works', `${signed(s.co2t, 1)} t`])}
         ${num(s, 'safety', ['Crash risk cost', money(s.safety)])}${num(s, 'localHot', ['Local streets over 2× traffic', s.localHot || 'none'])}
-        ${row('Checks failed', s.fails ? esc(s.failText) : 'none')}${row('Checks to confirm', s.warns || 'none')}</dl></section></div>
+        </dl></section></div>
+      <section class="oc-checks"><h5>Evaluation</h5>
+        ${s.failList?.length ? s.failList.map(f => `<div class="ck ${f.stock ? 'stock' : 'fail'}"><b>${esc(f.topic)}</b><span>${esc(f.finding)}</span>
+          <span class="ck-fix"><b>Action:</b> ${f.stock ? salesLink() : esc(f.rec || '')}</span></div>`).join('') : '<div class="ck pass"><b>No action needed</b></div>'}
+        ${s.warnList?.length ? `<div class="ck-sub">Need to validate on field (${s.warnList.length})</div><ul class="ck-list">${s.warnList.map(w => `<li title="${esc(w.rec || '')}">${esc(w.topic)}</li>`).join('')}</ul>` : ''}
+      </section>
       <div class="oc-foot">
         ${s.community != null ? `<div class="oc-comm"><span>Community cost</span><b>${money(s.community)}</b></div>` : ''}
         <div class="oc-total"><span>${s.community != null ? 'Equipment & fees' : 'Total cost'}</span>${low ? '<em>Lowest</em>' : ''}<b>${money(s.cost)}</b></div>
@@ -1733,7 +1752,7 @@ function openCompare(items) {
   const bars = items.map((s, i) => { const p = pos(s);
     return `<div class="cbrow"><div class="cblab">Option ${String.fromCharCode(65 + i)} · ${esc(s.name)}</div><div class="cbbar">${COST_GROUPS.map(([k, lab], j) => p[j] > 0 ? `<i style="width:${p[j] / maxBar * 100}%;background:${GROUP_COL[k]}" title="${esc(lab)}: ${money(s.groups[k])}"></i>` : '').join('')}</div><div class="cbval">${money(s.cost)}</div></div>`; }).join('');
   $('#cmpBody').innerHTML = `
-    <p class="cmp-note">Same network model, economic values and depot stock for every option. <span class="best-key">Green</span> marks the lowest value in a row. ${durs.size > 1 ? '<b class="warn">Works durations differ; compare the cost per hour under Expand.</b> ' : ''}${sites.size > 1 ? '<b class="warn">The options are at different sites.</b>' : ''}</p>
+    <p class="cmp-note">Same network model, economic values and depot stock for every option. <span class="best-key">Green</span> marks the lowest value in a row. ${durs.size > 1 ? '<b class="warn">Works durations differ; compare the cost per hour.</b> ' : ''}${sites.size > 1 ? '<b class="warn">The options are at different sites.</b>' : ''}</p>
     <div class="oc-grid" style="grid-template-columns:repeat(${items.length}, minmax(240px, 1fr))">${items.map(card).join('')}</div>
     <details class="fold cmp-cost"><summary>Where the cost comes from</summary>
       <div class="cblegend">${COST_GROUPS.map(([k, lab]) => `<span><i style="background:${GROUP_COL[k]}"></i>${lab}</span>`).join('')}</div>
@@ -1743,12 +1762,6 @@ function openCompare(items) {
   const body = $('#cmpBody');
   body.querySelectorAll('[data-cmp-apply]').forEach(b => b.onclick = () => items[+b.dataset.cmpApply].apply());
   body.querySelectorAll('[data-cmp-adjust]').forEach(b => b.onclick = () => items[+b.dataset.cmpAdjust].adjust());
-  // Expand opens the extra detail on every card, so the rows stay aligned
-  body.querySelectorAll('[data-exp]').forEach(b => b.onclick = () => {
-    const open = b.getAttribute('aria-expanded') !== 'true';
-    body.querySelectorAll('.oc-more').forEach(m => m.hidden = !open);
-    body.querySelectorAll('[data-exp]').forEach(x => { x.setAttribute('aria-expanded', open); x.textContent = open ? 'Collapse' : 'Expand'; });
-  });
   $('#cmpModal').classList.remove('hidden');
   $('#cmpClose').focus();
 }
@@ -1853,6 +1866,7 @@ fetch('data/pt_shapes.json').then(r => r.json()).then(j => { S.ptShapes = j; }).
 fetch('data/pt_service.json').then(r => r.json()).then(j => { S.ptService = j; }).catch(() => toast('PT timetable data could not be loaded, PT delays will not be valued.', true));
 renderPresets(); renderInventory(); renderClosures(); renderCompare(); updateLegend();
 setWindow('day'); switchTab('input');
+if (/[?&]role=rpm\b/.test(location.search)) document.body.classList.add('rpm');
 L.rectangle([[-38.55, 144.3], [-37.35, 145.95]], { color: '#03080B', weight: 1, fill: false, dashArray: '4 6', interactive: false }).addTo(layers.study);
 // handle for debugging / automated tests in the browser console
 window.workZoneSim = { map, state: S, anim };

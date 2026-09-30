@@ -1,6 +1,8 @@
 // Equipment hire rate card and bill of materials for the Procurement stage.
 // The default rates are PLACEHOLDERS for the demo, not RPM Hire prices. They are editable in the app and saved in
 // this browser; replace them with the RPM Hire rate card. Totals exclude GST (10% shown separately).
+// RPM Hire contact and product pages. Set these to RPM Hire's own URLs; while null the app shows a placeholder.
+export const RPM_LINKS = { sales: null, catalogue: null };
 export const RATE_NOTE = 'Indicative placeholder rates for the demo, not RPM Hire prices. Replace them with the RPM Hire rate card.';
 
 export const DEFAULT_RATES = {

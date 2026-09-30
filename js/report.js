@@ -91,7 +91,7 @@ export function councilReport(ctx, doc = 'tmp') {
   const g = net.veh, per = PERIODS[r.period], base = r.base;
   const label = k => inventory.find(i => i.key === k)?.label || k;
   const trams = groupByRef(r.pt.tram), buses = groupByRef(r.pt.bus);
-  const status = s => ({ pass: '<b class="ok">Pass</b>', warn: '<b class="warn">Check</b>', fail: '<b class="bad">Fail</b>', action: '<b class="act">Action</b>', info: 'Note' }[s]);
+  const status = s => ({ pass: '<b class="ok">Ready</b>', warn: '<b class="warn">Validate on site</b>', fail: '<b class="bad">Action needed</b>', stock: '<b class="warn">Hire equipment</b>', action: '<b class="act">Recommendation</b>', info: 'Note' }[s]);
   const nFail = checks.filter(x => x.status === 'fail').length, nWarn = checks.filter(x => x.status === 'warn').length;
   const workLinks = [...new Set(closures.flatMap(cl => cl.allLinks))].map(l => g.links[l]);
   const seenCount = new Set();
@@ -646,9 +646,9 @@ ${r.plan.vmsPlaced ? `<li>${r.plan.vmsPlaced} VMS board(s) on the approaches, wa
 ${r.meta?.prenotify ? '<li>Closure published in advance to VicTraffic and navigation data providers.</li>' : '<li>Publish the closure in advance to VicTraffic and navigation data providers, so more drivers re-route before they reach the site.</li>'}
 ${trams.filter(t => t.replacementBuses).map(t => `<li>Tram ${esc(t.ref)}: ${t.replacementBuses} replacement buses between ${esc(t.replacementFrom)} and ${esc(t.replacementTo)}.</li>`).join('')}
 </ul>
-${checks.some(x => x.status === 'fail' || x.status === 'warn') ? `<h3>Matters to resolve before lodging</h3>
+${checks.some(x => x.status === 'fail' || x.status === 'stock' || x.status === 'warn') ? `<h3>Matters to resolve before lodging</h3>
 <table><tr><th style="width:22%">Check</th><th style="width:9%">Result</th><th>Recommendation</th></tr>
-${checks.filter(x => x.status === 'fail' || x.status === 'warn').map(x => `<tr><td>${esc(x.topic)}</td><td>${status(x.status)}</td><td>${esc(x.rec || x.finding)}</td></tr>`).join('')}</table>` : ''}
+${checks.filter(x => x.status === 'fail' || x.status === 'stock' || x.status === 'warn').map(x => `<tr><td>${esc(x.topic)}</td><td>${status(x.status)}</td><td>${esc(x.rec || x.finding)}</td></tr>`).join('')}</table>` : ''}
 
 <h2>7. Implementation</h2>
 <table><tr><th>Activity</th><th>Frequency</th></tr>

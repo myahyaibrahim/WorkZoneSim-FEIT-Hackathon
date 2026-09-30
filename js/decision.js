@@ -76,10 +76,12 @@ export function complianceChecks(net, closures, r, base) {
     const vc = sc.cap[e] > 0 ? r.res.flow[e] / sc.cap[e] : 0;
     if (!worst || vc > worst.vc) worst = { vc, name: g.links[g.link[e]].name };
   }
-  if (worst) add(worst.vc > 1 ? 'fail' : worst.vc > 0.9 ? 'warn' : 'pass', 'Detour capacity', `Highest volume/capacity on the signed detour: ${worst.vc.toFixed(2)} (${worst.name})`, REFS.capacity,
-    worst.vc > 1
-      ? `${worst.name} would be over capacity. Sign a second detour to split the traffic, ask the road authority to adjust signal timings along the detour, or move the works to a lower-demand window (see Decide).`
-      : `${worst.name} is close to capacity. Monitor on the first day and have a second detour ready; ask the road authority about signal timing on the detour.`);
+  if (worst) {
+    const st = worst.name.replace(/ Street$/, ' St').replace(/ Road$/, ' Rd'), vmsTxt = `${st.toUpperCase()} DETOUR · EXPECT DELAYS · ALLOW EXTRA TIME`;
+    add(worst.vc > 1 ? 'fail' : worst.vc > 0.9 ? 'warn' : 'pass', worst.vc > 0.9 ? `Possible congestion on the detour on ${st}` : 'Detour capacity',
+      `${worst.vc > 1 ? 'Traffic on' : 'Traffic on'} ${worst.name} reaches ${Math.round(worst.vc * 100)}% of its capacity with the detour (volume/capacity ${worst.vc.toFixed(2)})`, REFS.capacity,
+      `Show road users "${vmsTxt}" on a VMS before ${st}${r.plan.vmsPlaced ? ' (use one of the planned VMS boards)' : ''}, and sign a second detour so part of the traffic avoids ${st}. Ask the road authority to lengthen green time along ${st}, or choose a scenario in a quieter window.`);
+  }
 
   // queues reaching the previous intersection
   const spill = r.queues.filter(q => q.lengthM > g.len[q.e]);
@@ -100,7 +102,8 @@ export function complianceChecks(net, closures, r, base) {
 
   // equipment
   const shortItems = r.plan.items.filter(i => i.shortfall);
-  add(shortItems.length ? 'fail' : 'pass', 'Equipment availability', shortItems.length
+  // a depot shortfall is a supply matter (hire from RPM Hire), not a failed check: status 'stock' keeps it out of scenario ranking
+  add(shortItems.length ? 'stock' : 'pass', shortItems.length ? 'Short on equipment availability' : 'Equipment availability', shortItems.length
     ? `Short: ${shortItems.map(i => `${i.label} −${i.shortfall}`).join('; ')}`
     : 'Depot stock covers the full layout', 'Depot inventory (user input)',
     `Hire or transfer before deployment: ${shortItems.map(i => `${i.shortfall} × ${i.label}`).join('; ')}.${shortItems.some(i => i.key === 'vms') ? ' Without the extra VMS fewer drivers are warned in advance; re-run after changing the stock to see the effect.' : ''}${shortItems.some(i => i.key === 'barrier') ? ' Where Code Cl. 17 does not require a barrier, cones can replace barriers.' : ''}`);
