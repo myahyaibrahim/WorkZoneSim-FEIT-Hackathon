@@ -1,0 +1,4 @@
+# Netlify deployment: the app is static files (no build step); AI advice runs in netlify/edge-functions.
+[build]
+  publish = "."
+  command = ""
